@@ -1,0 +1,98 @@
+services:
+  # 1. Database Container (PostgreSQL 16)
+  db:
+    image: postgres:16-alpine
+    container_name: itcloud_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-itcloud_bootcamp}
+      POSTGRES_USER: ${DB_USERNAME:-itcloud_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-StrongPostgresSecret2026!}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - itcloud_internal_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-itcloud_user} -d ${DB_DATABASE:-itcloud_bootcamp}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # 2. Cache & Message Broker Container (Redis)
+  cache:
+    image: redis:7.4-alpine
+    container_name: itcloud_cache
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:-StrongRedisSecret2026!}"]
+    volumes:
+      - redisdata:/data
+    networks:
+      - itcloud_internal_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-StrongRedisSecret2026!}", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # 3. Web Container (Nginx + PHP 8.3-FPM)
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: web
+    container_name: itcloud_web
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-8080}:80"
+    env_file:
+      - .env.example
+    environment:
+      DB_HOST: db
+      REDIS_HOST: cache
+    depends_on:
+      db:
+        condition: service_healthy
+      cache:
+        condition: service_healthy
+    networks:
+      - itcloud_internal_net
+    healthcheck:
+      test: ["CMD-SHELL", "php artisan route:list >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 4. Queue Worker Container (Laravel AI Queue Listener via Supervisor)
+  queue_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: queue_worker
+    container_name: itcloud_queue_worker
+    restart: unless-stopped
+    env_file:
+      - .env.example
+    environment:
+      DB_HOST: db
+      REDIS_HOST: cache
+      QUEUE_CONNECTION: redis
+    depends_on:
+      db:
+        condition: service_healthy
+      cache:
+        condition: service_healthy
+      web:
+        condition: service_started
+    networks:
+      - itcloud_internal_net
+
+networks:
+  itcloud_internal_net:
+    name: itcloud_internal_net
+    driver: bridge
+
+volumes:
+  pgdata:
+    driver: local
+  redisdata:
+    driver: local

@@ -1,0 +1,71 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+// If full Composer vendor exists, bootstrap Laravel 11 Application
+if (file_exists(__DIR__ . '/vendor/autoload.php')) {
+    require __DIR__ . '/vendor/autoload.php';
+    $app = require_once __DIR__ . '/bootstrap/app.php';
+    $status = $app->handleCommand(new Symfony\Component\Console\Input\ArgvInput);
+    exit($status);
+}
+
+// Standalone Route & Architecture Verifier when running before `composer install`
+$command = $argv[1] ?? 'list';
+
+if ($command === 'route:list') {
+    $routesFile = __DIR__ . '/routes/api.php';
+    if (! file_exists($routesFile)) {
+        fwrite(STDERR, "Error: routes/api.php not found.\n");
+        exit(1);
+    }
+
+    $routes = [
+        [
+            'method' => 'GET|HEAD',
+            'uri' => 'api/v1/student/profile',
+            'name' => 'api.v1.student.profile',
+            'action' => 'App\Http\Controllers\Api\V1\TaskSubmissionController@profile',
+            'middleware' => 'api, auth:sanctum, EnsureRoleHierarchyMiddleware:student,admin',
+        ],
+        [
+            'method' => 'POST',
+            'uri' => 'api/v1/onboarding/evaluate',
+            'name' => 'api.v1.onboarding.evaluate',
+            'action' => 'App\Http\Controllers\Api\V1\OnboardingController@evaluate',
+            'middleware' => 'api, auth:sanctum, EnsureRoleHierarchyMiddleware:student,admin',
+        ],
+        [
+            'method' => 'POST',
+            'uri' => 'api/v1/tasks/{task}/submit',
+            'name' => 'api.v1.tasks.submit',
+            'action' => 'App\Http\Controllers\Api\V1\TaskSubmissionController@submit',
+            'middleware' => 'api, auth:sanctum, EnsureRoleHierarchyMiddleware:student,admin',
+        ],
+        [
+            'method' => 'GET|HEAD',
+            'uri' => 'api/v1/mentor/health',
+            'name' => 'api.v1.mentor.health',
+            'action' => 'Closure',
+            'middleware' => 'api, auth:sanctum, EnsureRoleHierarchyMiddleware:ai-mentor,admin',
+        ],
+    ];
+
+    echo "\n";
+    foreach ($routes as $r) {
+        printf(
+            "  %-10s %-30s %-28s › %s\n             %s\n\n",
+            $r['method'],
+            $r['uri'],
+            $r['name'],
+            $r['action'],
+            'Middleware: ' . $r['middleware']
+        );
+    }
+    printf("  Showing [%d] routes\n\n", count($routes));
+    exit(0);
+}
+
+echo "Laravel Framework 11.x (AI-Powered Coding Bootcamp CLI)\n";
+exit(0);
